@@ -74,8 +74,8 @@ class Gsc_Activator {
                 ];
             }
 
-            error_log( print_r( $fields, true ) );
-            error_log("form_id". $form->id());
+//            error_log( print_r( $fields, true ) );
+//            error_log("form_id". $form->id());
             $response = wp_remote_post( 'http://127.0.0.1:8000/api/forms', [
                 'body'    => wp_json_encode([
                     'form_id' => $form->id(),
@@ -90,7 +90,7 @@ class Gsc_Activator {
                 'timeout' => 15,
             ]);
 
-            error_log( print_r( $response, true ) );
+//            error_log( print_r( $response, true ) );
 
         }
     }

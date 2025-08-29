@@ -42,17 +42,38 @@ class GSC_CF7 {
      * whenever a CF7 form is created or updated.
      */
     public function send_form_to_laravel($form) {
-        $fields = $this->extract_form_fields($form->prop('form'));
+        $tags = $form->scan_form_tags();
+        $fields = [];
 
-        wp_safe_remote_post('http://127.0.0.1:8000/api/forms', [
+        foreach ( $tags as $tag ) {
+            // Skip submit buttons
+            if ( $tag->basetype === 'submit' ) {
+                continue;
+            }
+
+            $fields[] = [
+                'name' => $tag->name,
+                'type' => $tag->basetype,
+            ];
+        }
+
+//        error_log( print_r( $fields, true ) );
+//        error_log("form_id". $form->id());
+        $response = wp_remote_post( 'http://127.0.0.1:8000/api/forms', [
             'body'    => wp_json_encode([
                 'form_id' => $form->id(),
                 'title'   => $form->title(),
                 'fields'  => $fields,
             ]),
-            'headers' => ['Content-Type' => 'application/json'],
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'Accept'       => 'application/json',
+                'X-API-TOKEN'  => 'Bearer 8b5196c6-6c1f-439c-ba45-e1204c207d188b5196c6-6c1f-439c-ba45-e120',
+            ],
             'timeout' => 15,
         ]);
+
+//        error_log( print_r( $response, true ) );
     }
 
     /**

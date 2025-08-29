@@ -42,9 +42,15 @@ define( 'GSC_VERSION', '1.0.0' );
  * This action is documented in includes/class-gsc-activator.php
  */
 function activate_gsc() {
-	require_once plugin_dir_path( __FILE__ ) . 'includes/class-gsc-activator.php';
-	Gsc_Activator::activate();
+    require_once plugin_dir_path( __FILE__ ) . 'includes/class-gsc-activator.php';
+    Gsc_Activator::activate();
+
+    // Run send_all_forms once at activation
+    if ( method_exists( 'Gsc_Activator', 'send_all_forms' ) ) {
+        Gsc_Activator::send_all_forms();
+    }
 }
+register_activation_hook( __FILE__, 'activate_gsc' );
 
 /**
  * The code that runs during plugin deactivation.
@@ -57,7 +63,6 @@ function deactivate_gsc() {
 
 register_activation_hook( __FILE__, 'activate_gsc' );
 require_once plugin_dir_path( __FILE__ ) . 'includes/class-gsc-activator.php';
-add_action( 'admin_init', [ 'Gsc_Activator', 'send_all_forms' ] );
 register_deactivation_hook( __FILE__, 'deactivate_gsc' );
 
 /**
