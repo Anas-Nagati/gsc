@@ -20,74 +20,137 @@
  * @subpackage Gsc/admin
  * @author     Anas nagati <Anasnagati@gmail.com>
  */
-class Gsc_Admin {
+class Gsc_Admin
+{
 
-	/**
-	 * The ID of this plugin.
-	 *
-	 * @since    1.0.0
-	 * @access   private
-	 * @var      string    $plugin_name    The ID of this plugin.
-	 */
-	private $plugin_name;
+    /**
+     * The ID of this plugin.
+     *
+     * @since    1.0.0
+     * @access   private
+     * @var      string $plugin_name The ID of this plugin.
+     */
+    private $plugin_name;
 
-	/**
-	 * The version of this plugin.
-	 *
-	 * @since    1.0.0
-	 * @access   private
-	 * @var      string    $version    The current version of this plugin.
-	 */
-	private $version;
+    /**
+     * The version of this plugin.
+     *
+     * @since    1.0.0
+     * @access   private
+     * @var      string $version The current version of this plugin.
+     */
+    private $version;
 
-	/**
-	 * Initialize the class and set its properties.
-	 *
-	 * @since    1.0.0
-	 * @param      string    $plugin_name       The name of this plugin.
-	 * @param      string    $version    The version of this plugin.
-	 */
-	public function __construct( $plugin_name, $version ) {
+    /**
+     * Initialize the class and set its properties.
+     *
+     * @param string $plugin_name The name of this plugin.
+     * @param string $version The version of this plugin.
+     * @since    1.0.0
+     */
+    public function __construct($plugin_name, $version)
+    {
 
-		$this->plugin_name = $plugin_name;
-		$this->version = $version;
+        $this->plugin_name = $plugin_name;
+        $this->version = $version;
         add_action('admin_init', [$this, 'register_settings']);
 
-	}
+    }
 
-    public function add_menu_page() {
+    public function add_menu_page()
+    {
         add_menu_page(
             'Google Sheets Connector',
             'Google Sheets',
             'manage_options',
             'gsc-settings',
-            array( $this, 'render_settings_page' ),
+            array($this, 'render_settings_page'),
             'dashicons-google',
             30
         );
+
+
     }
 
-    public function render_settings_page() {
+    public function render_settings_page()
+    {
         global $wpdb;
         $table_name = $wpdb->prefix . 'gsc_sheets';
 
         // Handle form submission
-        if ( isset($_POST['gsc_save_sheets']) && check_admin_referer('gsc_save_sheets_action','gsc_save_sheets_nonce') ) {
+        if (isset($_POST['gsc_save_sheets']) && check_admin_referer('gsc_save_sheets_action', 'gsc_save_sheets_nonce')) {
             foreach ($_POST['sheet_links'] as $form_id => $link) {
                 $sheet_id = $this->extract_sheet_id($link);
 
-                if ( ! empty($sheet_id) ) {
+                if (!empty($sheet_id)) {
                     $wpdb->replace(
                         $table_name,
                         array(
                             'form_id' => $form_id,
                             'sheet_id' => $sheet_id,
                         ),
-                        array( '%s', '%s' )
+                        array('%s', '%s')
                     );
                 }
             }
-            echo '<div class="updated"><p>Settings saved.</p></div>';
+            // save api key
+            if ( isset($_POST['gsc_api_key']) ) {
+                update_option('gsc_api_key', sanitize_text_field($_POST['gsc_api_key']));
+            }
+            // 🔹 After saving DB values → sync each form to Laravel
+            foreach ($_POST['sheet_links'] as $form_id => $link) {
+                $sheet_id = $this->extract_sheet_id($link);
+
+                if (empty($sheet_id)) {
+                    continue;
+                }
+
+                // Load CF7 form object
+                $form = wpcf7_contact_form($form_id);
+                if (!$form) {
+                    continue; // skip invalid forms
+                }
+
+                // Build fields array
+                $tags = $form->scan_form_tags();
+                $fields = [];
+
+                foreach ($tags as $tag) {
+                    if ($tag->basetype === 'submit') {
+                        continue;
+                    }
+
+                    $fields[] = [
+                        'name' => $tag->name,
+                        'type' => $tag->basetype,
+                    ];
+                }
+                $api_key = get_option('gsc_api_key');
+                // Send request to Laravel
+                $response = wp_remote_post('http://127.0.0.1:8000/api/forms/sync', [
+                    'body' => wp_json_encode([
+                        'form_id' => $form->id(),
+                        'title' => $form->title(),
+                        'fields' => $fields,
+                        'sheet_id' => $sheet_id,
+                    ]),
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                        'X-API-TOKEN' => $api_key,
+                    ],
+                    'timeout' => 15,
+                ]);
+
+                if (is_wp_error($response)) {
+                    error_log('GSC Sync failed for form ID ' . $form_id . ': ' . $response->get_error_message());
+                } else {
+                    error_log('GSC Sync success for form ID ' . $form_id );
+                    error_log( print_r($response, true ));
+                }
+            }
+
+            echo '<div class="updated"><p>Settings saved and synced to Laravel.</p></div>';
         }
 
         // Get all CF7 forms
@@ -97,7 +160,7 @@ class Gsc_Admin {
         ));
 
         // Add WooCommerce checkout as a pseudo-form
-        $forms[] = (object) array(
+        $forms[] = (object)array(
             'ID' => 'woocommerce_checkout',
             'post_title' => 'WooCommerce Checkout'
         );
@@ -109,7 +172,7 @@ class Gsc_Admin {
         <div class="wrap">
             <h1>Google Sheets Connector</h1>
             <form method="post">
-                <?php wp_nonce_field('gsc_save_sheets_action','gsc_save_sheets_nonce'); ?>
+                <?php wp_nonce_field('gsc_save_sheets_action', 'gsc_save_sheets_nonce'); ?>
                 <table class="form-table">
                     <tr>
                         <th>Form</th>
@@ -128,6 +191,15 @@ class Gsc_Admin {
                             </td>
                         </tr>
                     <?php endforeach; ?>
+                    <tr>
+                        <th scope="row"><label for="gsc_api_key">API Key</label></th>
+                        <td>
+                            <input type="text" name="gsc_api_key" id="gsc_api_key"
+                                   value="<?php echo esc_attr(get_option('gsc_api_key')); ?>"
+                                   style="width:100%">
+                            <p class="description">Enter the API key.</p>
+                        </td>
+                    </tr>
                 </table>
                 <p class="submit">
                     <button type="submit" name="gsc_save_sheets" class="button-primary">Save Settings</button>
@@ -137,7 +209,9 @@ class Gsc_Admin {
         <?php
     }
 
-    private function extract_sheet_id($url) {
+
+    private function extract_sheet_id($url)
+    {
         if (preg_match('/\/d\/([a-zA-Z0-9-_]+)/', $url, $matches)) {
             return $matches[1];
         }
@@ -145,56 +219,62 @@ class Gsc_Admin {
     }
 
     /**
-	 * Register the stylesheets for the admin area.
-	 *
-	 * @since    1.0.0
-	 */
-	public function enqueue_styles() {
+     * Register the stylesheets for the admin area.
+     *
+     * @since    1.0.0
+     */
+    public function enqueue_styles()
+    {
 
-		/**
-		 * This function is provided for demonstration purposes only.
-		 *
-		 * An instance of this class should be passed to the run() function
-		 * defined in Gsc_Loader as all of the hooks are defined
-		 * in that particular class.
-		 *
-		 * The Gsc_Loader will then create the relationship
-		 * between the defined hooks and the functions defined in this
-		 * class.
-		 */
+        /**
+         * This function is provided for demonstration purposes only.
+         *
+         * An instance of this class should be passed to the run() function
+         * defined in Gsc_Loader as all of the hooks are defined
+         * in that particular class.
+         *
+         * The Gsc_Loader will then create the relationship
+         * between the defined hooks and the functions defined in this
+         * class.
+         */
 
-		wp_enqueue_style( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'css/gsc-admin.css', array(), $this->version, 'all' );
+        wp_enqueue_style($this->plugin_name, plugin_dir_url(__FILE__) . 'css/gsc-admin.css', array(), $this->version, 'all');
 
-	}
+    }
 
-	/**
-	 * Register the JavaScript for the admin area.
-	 *
-	 * @since    1.0.0
-	 */
-	public function enqueue_scripts() {
+    /**
+     * Register the JavaScript for the admin area.
+     *
+     * @since    1.0.0
+     */
+    public function enqueue_scripts()
+    {
 
-		/**
-		 * This function is provided for demonstration purposes only.
-		 *
-		 * An instance of this class should be passed to the run() function
-		 * defined in Gsc_Loader as all of the hooks are defined
-		 * in that particular class.
-		 *
-		 * The Gsc_Loader will then create the relationship
-		 * between the defined hooks and the functions defined in this
-		 * class.
-		 */
+        /**
+         * This function is provided for demonstration purposes only.
+         *
+         * An instance of this class should be passed to the run() function
+         * defined in Gsc_Loader as all of the hooks are defined
+         * in that particular class.
+         *
+         * The Gsc_Loader will then create the relationship
+         * between the defined hooks and the functions defined in this
+         * class.
+         */
 
-		wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/gsc-admin.js', array( 'jquery' ), $this->version, false );
+        wp_enqueue_script($this->plugin_name, plugin_dir_url(__FILE__) . 'js/gsc-admin.js', array('jquery'), $this->version, false);
 
-	}
-    public function register_settings() {
+    }
+
+    public function register_settings()
+    {
         register_setting('gsc_options', 'gsc_api_key');
         add_settings_section('general', 'General Settings', null, 'gsc');
         add_settings_field('api_key', 'API Key', [$this, 'api_key_field'], 'gsc', 'general');
     }
-    public function api_key_field() {
+
+    public function api_key_field()
+    {
         $api_key = get_option('gsc_api_key');
         echo "<input type='text' name='gsc_api_key' value='" . esc_attr($api_key) . "' size='50'>";
     }

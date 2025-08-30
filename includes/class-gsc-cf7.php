@@ -56,6 +56,7 @@ class GSC_CF7 {
                 'type' => $tag->basetype,
             ];
         }
+        $api_key = get_option('gsc_api_key');
 
 //        error_log( print_r( $fields, true ) );
 //        error_log("form_id". $form->id());
@@ -68,7 +69,7 @@ class GSC_CF7 {
             'headers' => [
                 'Content-Type' => 'application/json',
                 'Accept'       => 'application/json',
-                'X-API-TOKEN'  => 'Bearer 8b5196c6-6c1f-439c-ba45-e1204c207d188b5196c6-6c1f-439c-ba45-e120',
+                'X-API-TOKEN'  => 'Bearer ' . $api_key,
             ],
             'timeout' => 15,
         ]);
